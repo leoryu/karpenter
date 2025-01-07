@@ -274,6 +274,7 @@ func (t *Topology) countDomains(ctx context.Context, tg *TopologyGroup) error {
 
 	for i, p := range pods {
 		if IgnoredForTopology(&pods[i]) {
+			log.Printf("ignoring pod, pod name: %s, domain: %v, node name: %s", p.Name, tg.Key, p.Spec.NodeName)
 			continue
 		}
 		// pod is excluded for counting purposes
@@ -302,6 +303,7 @@ func (t *Topology) countDomains(ctx context.Context, tg *TopologyGroup) error {
 			ok = true
 		}
 		if !ok {
+			log.Printf("no domain for node, pod name: %s, domain: %v, node name: %s", p.Name, domain, p.Spec.NodeName)
 			continue // Don't include pods if node doesn't contain domain https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/#conventions
 		}
 		// nodes may or may not be considered for counting purposes for topology spread constraints depending on if they
@@ -310,6 +312,7 @@ func (t *Topology) countDomains(ctx context.Context, tg *TopologyGroup) error {
 			log.Printf("not matching node, node name: %s, pod name: %s, domain: %v", node.Name, p.Name, domain)
 			continue
 		}
+		// TODO
 		log.Printf("cont domains, node name: %s, pod name: %s, domain: %v", node.Name, p.Name, domain)
 		tg.Record(domain)
 	}
