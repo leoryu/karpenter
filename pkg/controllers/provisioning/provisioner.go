@@ -290,11 +290,11 @@ func (p *Provisioner) NewScheduler(ctx context.Context, pods []*corev1.Pod, stat
 	if len(notReadyNodePools) > 0 {
 		log.FromContext(ctx).WithValues("nodePools", nodePoolList).Info("skipped nodePools, not ready")
 	}
-	// inject topology constraints
-	pods = p.injectVolumeTopologyRequirements(ctx, pods)
+	// Link volume requirements to pods
+	podsVolumeRequirements := p.convertToPodVolumeRequirements(ctx, pods)
 
 	// Calculate cluster topology
-	topology, err := scheduler.NewTopology(ctx, p.kubeClient, p.cluster, domains, pods)
+	topology, err := scheduler.NewTopology(ctx, p.kubeClient, p.cluster, domains, podsVolumeRequirements)
 	if err != nil {
 		return nil, fmt.Errorf("tracking topology counts, %w", err)
 	}
@@ -459,13 +459,13 @@ func validateKarpenterManagedLabelCanExist(p *corev1.Pod) error {
 	return nil
 }
 
-func (p *Provisioner) injectVolumeTopologyRequirements(ctx context.Context, pods []*corev1.Pod) []*corev1.Pod {
-	var schedulablePods []*corev1.Pod
+func (p *Provisioner) convertToPodVolumeRequirements(ctx context.Context, pods []*corev1.Pod) map[*corev1.Pod][]corev1.NodeSelectorRequirement {
+	var schedulablePods = make(map[*corev1.Pod][]corev1.NodeSelectorRequirement)
 	for _, pod := range pods {
-		if err := p.volumeTopology.Inject(ctx, pod); err != nil {
+		if err, requirements := p.volumeTopology.GetVolumeRequirements(ctx, pod); err != nil {
 			log.FromContext(ctx).WithValues("Pod", klog.KRef(pod.Namespace, pod.Name)).Error(err, "failed getting volume topology requirements")
 		} else {
-			schedulablePods = append(schedulablePods, pod)
+			schedulablePods[pod] = requirements
 		}
 	}
 	return schedulablePods

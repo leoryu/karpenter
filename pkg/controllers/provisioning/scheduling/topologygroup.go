@@ -169,8 +169,7 @@ func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDo
 	min := t.domainMinCount(podDomains)
 	selfSelecting := t.selects(pod)
 
-	minDomain := ""
-	minCount := int32(math.MaxInt32)
+	candidateDomains := []string{}
 	for domain := range t.domains {
 		// but we can only choose from the node domains
 		if nodeDomains.Has(domain) {
@@ -180,17 +179,16 @@ func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDo
 			if selfSelecting {
 				count++
 			}
-			if count-min <= t.maxSkew && count < minCount {
-				minDomain = domain
-				minCount = count
+			if count-min <= t.maxSkew {
+				candidateDomains = append(candidateDomains, domain)
 			}
 		}
 	}
-	if minDomain == "" {
+	if len(candidateDomains) == 0 {
 		// avoids an error message about 'zone in [""]', preferring 'zone in []'
 		return scheduling.NewRequirement(podDomains.Key, v1.NodeSelectorOpDoesNotExist)
 	}
-	return scheduling.NewRequirement(podDomains.Key, v1.NodeSelectorOpIn, minDomain)
+	return scheduling.NewRequirement(podDomains.Key, v1.NodeSelectorOpIn, candidateDomains...)
 }
 
 func (t *TopologyGroup) domainMinCount(domains *scheduling.Requirement) int32 {

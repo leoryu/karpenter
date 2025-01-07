@@ -62,7 +62,7 @@ func NewNodeClaim(nodeClaimTemplate *NodeClaimTemplate, topology *Topology, daem
 	}
 }
 
-func (n *NodeClaim) Add(pod *v1.Pod) error {
+func (n *NodeClaim) Add(pod *v1.Pod, volumeRequirements []v1.NodeSelectorRequirement) error {
 	// Check Taints
 	if err := scheduling.Taints(n.Spec.Taints).Tolerates(pod); err != nil {
 		return err
@@ -97,6 +97,13 @@ func (n *NodeClaim) Add(pod *v1.Pod) error {
 		return err
 	}
 	nodeClaimRequirements.Add(topologyRequirements.Values()...)
+
+	podVolumeRequirements := scheduling.NewNodeSelectorRequirements(volumeRequirements...)
+	// Check Pod Volume Requirements
+	if err = nodeClaimRequirements.Compatible(podVolumeRequirements); err != nil {
+		return err
+	}
+	nodeClaimRequirements.Add(podVolumeRequirements.Values()...)
 
 	// Check instance type combinations
 	requests := resources.Merge(n.Spec.Resources.Requests, resources.RequestsForPods(pod))

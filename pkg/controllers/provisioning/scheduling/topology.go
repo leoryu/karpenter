@@ -56,28 +56,32 @@ type Topology struct {
 	// excludedPods are the pod UIDs of pods that are excluded from counting.  This is used so we can simulate
 	// moving pods to prevent them from being double counted.
 	excludedPods sets.Set[string]
-	cluster      *state.Cluster
+	// podVolumeRequirements links volume requirements to pods. This is used so we
+	// can track the volume requirements in simulate scheduler
+	podVolumeRequirements map[*corev1.Pod][]corev1.NodeSelectorRequirement
+	cluster               *state.Cluster
 }
 
-func NewTopology(ctx context.Context, kubeClient client.Client, cluster *state.Cluster, domains map[string]sets.Set[string], pods []*corev1.Pod) (*Topology, error) {
+func NewTopology(ctx context.Context, kubeClient client.Client, cluster *state.Cluster, domains map[string]sets.Set[string], podsVolumeRequirements map[*corev1.Pod][]corev1.NodeSelectorRequirement) (*Topology, error) {
 	t := &Topology{
-		kubeClient:        kubeClient,
-		cluster:           cluster,
-		domains:           domains,
-		topologies:        map[uint64]*TopologyGroup{},
-		inverseTopologies: map[uint64]*TopologyGroup{},
-		excludedPods:      sets.New[string](),
+		kubeClient:            kubeClient,
+		cluster:               cluster,
+		domains:               domains,
+		topologies:            map[uint64]*TopologyGroup{},
+		inverseTopologies:     map[uint64]*TopologyGroup{},
+		excludedPods:          sets.New[string](),
+		podVolumeRequirements: podsVolumeRequirements,
 	}
 
 	// these are the pods that we intend to schedule, so if they are currently in the cluster we shouldn't count them for
 	// topology purposes
-	for _, p := range pods {
+	for p := range podsVolumeRequirements {
 		t.excludedPods.Insert(string(p.UID))
 	}
 
 	errs := t.updateInverseAffinities(ctx)
-	for i := range pods {
-		errs = multierr.Append(errs, t.Update(ctx, pods[i]))
+	for p := range podsVolumeRequirements {
+		errs = multierr.Append(errs, t.Update(ctx, p))
 	}
 	if errs != nil {
 		return nil, errs
