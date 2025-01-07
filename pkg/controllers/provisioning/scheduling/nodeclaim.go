@@ -100,7 +100,7 @@ func (n *NodeClaim) Add(pod *v1.Pod, volumeRequirements []v1.NodeSelectorRequire
 
 	podVolumeRequirements := scheduling.NewNodeSelectorRequirements(volumeRequirements...)
 	// Check Pod Volume Requirements
-	if err = nodeClaimRequirements.Compatible(podVolumeRequirements); err != nil {
+	if err = nodeClaimRequirements.Compatible(podVolumeRequirements, scheduling.AllowUndefinedWellKnownLabels); err != nil {
 		return err
 	}
 	nodeClaimRequirements.Add(podVolumeRequirements.Values()...)
