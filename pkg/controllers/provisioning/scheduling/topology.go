@@ -19,6 +19,7 @@ package scheduling
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 
 	"github.com/awslabs/operatorpkg/option"
@@ -246,6 +247,7 @@ func (t *Topology) updateInverseAntiAffinity(ctx context.Context, pod *corev1.Po
 			tg = existing
 		}
 		if domain, ok := domains[tg.Key]; ok {
+			log.Printf("update anti affinity, pod name: %s, domain: %v", pod.Name, domain)
 			tg.Record(domain)
 		}
 		tg.AddOwner(pod.UID)
@@ -305,8 +307,10 @@ func (t *Topology) countDomains(ctx context.Context, tg *TopologyGroup) error {
 		// nodes may or may not be considered for counting purposes for topology spread constraints depending on if they
 		// are selected by the pod's node selectors and required node affinities.  If these are unset, the node always counts.
 		if !tg.nodeFilter.Matches(node) {
+			log.Printf("not matching node, node name: %s, pod name: %s, domain: %v", node.Name, p.Name, domain)
 			continue
 		}
+		log.Printf("cont domains, node name: %s, pod name: %s, domain: %v", node.Name, p.Name, domain)
 		tg.Record(domain)
 	}
 	return nil
