@@ -283,8 +283,20 @@ func (p *Provisioner) NewScheduler(ctx context.Context, pods []*corev1.Pod, stat
 		}
 	}
 
-	// inject topology constraints
-	pods = p.injectVolumeTopologyRequirements(ctx, pods)
+	// Add Existing Nodes' Domains
+	for _, n := range stateNodes {
+		if n.Node != nil {
+			requirements := scheduling.NewLabelRequirements(n.Node.Labels)
+			for key, requirement := range requirements {
+				if domains[key] == nil {
+					domains[key] = sets.New(requirement.Values()...)
+				} else {
+					domains[key].Insert(requirement.Values()...)
+				}
+			}
+		}
+	}
+
 	// Link volume requirements to pods
 	podsVolumeRequirements := p.convertToPodVolumeRequirements(ctx, pods)
 
