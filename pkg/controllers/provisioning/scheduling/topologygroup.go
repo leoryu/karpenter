@@ -175,7 +175,7 @@ func (t *TopologyGroup) Hash() uint64 {
 }
 
 // nextDomainTopologySpread returns a scheduling.Requirement that includes a node domain that a pod should be scheduled to.
-// If there are multiple eligible domains, we return any random domain that satisfies the `maxSkew` configuration.
+// If there are multiple eligible domains, we return all eligible domains that satisfies the `maxSkew` configuration.
 // If there are no eligible domains, we return a `DoesNotExist` requirement, implying that we could not satisfy the topologySpread requirement.
 // nolint:gocyclo
 func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDomains *scheduling.Requirement) *scheduling.Requirement {
@@ -183,9 +183,7 @@ func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDo
 	min := t.domainMinCount(podDomains)
 	selfSelecting := t.selects(pod)
 
-	minDomain := ""
-	minCount := int32(math.MaxInt32)
-
+	candidateDomains := []string{}
 	// If we are explicitly selecting on specific node domains ("In" requirement),
 	// this is going to be more efficient to iterate through
 	// This is particularly useful when considering the hostname topology key that can have a
@@ -196,9 +194,8 @@ func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDo
 				if selfSelecting {
 					count++
 				}
-				if count-min <= t.maxSkew && count < minCount {
-					minDomain = domain
-					minCount = count
+				if count-min <= t.maxSkew {
+					candidateDomains = append(candidateDomains, domain)
 				}
 			}
 		}
@@ -212,18 +209,17 @@ func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDo
 				if selfSelecting {
 					count++
 				}
-				if count-min <= t.maxSkew && count < minCount {
-					minDomain = domain
-					minCount = count
+				if count-min <= t.maxSkew {
+					candidateDomains = append(candidateDomains, domain)
 				}
 			}
 		}
 	}
-	if minDomain == "" {
+	if len(candidateDomains) == 0 {
 		// avoids an error message about 'zone in [""]', preferring 'zone in []'
 		return scheduling.NewRequirement(podDomains.Key, v1.NodeSelectorOpDoesNotExist)
 	}
-	return scheduling.NewRequirement(podDomains.Key, v1.NodeSelectorOpIn, minDomain)
+	return scheduling.NewRequirement(podDomains.Key, v1.NodeSelectorOpIn, candidateDomains...)
 }
 
 func (t *TopologyGroup) domainMinCount(domains *scheduling.Requirement) int32 {
