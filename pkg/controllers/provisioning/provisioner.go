@@ -290,6 +290,21 @@ func (p *Provisioner) NewScheduler(ctx context.Context, pods []*corev1.Pod, stat
 	if len(notReadyNodePools) > 0 {
 		log.FromContext(ctx).WithValues("nodePools", nodePoolList).Info("skipped nodePools, not ready")
 	}
+
+	// Add Existing Nodes' Domains
+	for _, n := range stateNodes {
+		if n.Node != nil {
+			requirements := scheduling.NewLabelRequirements(n.Node.Labels)
+			for key, requirement := range requirements {
+				if domains[key] == nil {
+					domains[key] = sets.New(requirement.Values()...)
+				} else {
+					domains[key].Insert(requirement.Values()...)
+				}
+			}
+		}
+	}
+
 	// Link volume requirements to pods
 	podsVolumeRequirements := p.convertToPodVolumeRequirements(ctx, pods)
 

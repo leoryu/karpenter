@@ -200,6 +200,7 @@ func (t *TopologyGroup) domainMinCount(domains *scheduling.Requirement) int32 {
 	if t.Key == v1.LabelHostname {
 		return 0
 	}
+	log.Printf("empty domains: %s %v", t.Key, t.emptyDomains.UnsortedList())
 
 	min := int32(math.MaxInt32)
 	var numPodSupportedDomains int32
