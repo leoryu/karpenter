@@ -168,7 +168,7 @@ func (t *TopologyGroup) Hash() uint64 {
 func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDomains *scheduling.Requirement) *scheduling.Requirement {
 	// min count is calculated across all domains
 	min := t.domainMinCount(podDomains)
-	log.Printf("pod %s min domain count:%d", pod.Name, min)
+	log.Printf("pod %s min domain, key: %s count:%d", t.Key, pod.Name, min)
 	selfSelecting := t.selects(pod)
 
 	candidateDomains := []string{}
@@ -178,10 +178,10 @@ func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDo
 			// comment from kube-scheduler regarding the viable choices to schedule to based on skew is:
 			// 'existing matching num' + 'if self-match (1 or 0)' - 'global min matching num' <= 'maxSkew'
 			count := t.domains[domain]
-			log.Printf("spread domain: %s : %d", domain, count)
+			log.Printf("spread domain: %s %s : %d", t.Key, domain, count)
 			if selfSelecting {
 				count++
-				log.Printf("is selfSelecting: %s : %d", domain, count)
+				log.Printf("is selfSelecting: %s %s : %d", t.Key, domain, count)
 			}
 			if count-min <= t.maxSkew {
 				candidateDomains = append(candidateDomains, domain)
