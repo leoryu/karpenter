@@ -168,7 +168,7 @@ func (t *TopologyGroup) Hash() uint64 {
 func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDomains *scheduling.Requirement) *scheduling.Requirement {
 	// min count is calculated across all domains
 	min := t.domainMinCount(podDomains)
-	log.Printf("pod %s min domain, key: %s count:%d", t.Key, pod.Name, min)
+	log.Printf("pod %s min domain, key: %s count:%d", pod.Name, t.Key, min)
 	selfSelecting := t.selects(pod)
 
 	candidateDomains := []string{}
@@ -205,7 +205,9 @@ func (t *TopologyGroup) domainMinCount(domains *scheduling.Requirement) int32 {
 	var numPodSupportedDomains int32
 	// determine our current min count
 	for domain, count := range t.domains {
+		log.Printf("domain: %s %s : %d", t.Key, domain, count)
 		if domains.Has(domain) {
+			log.Printf("has domain: %s %s : %d", t.Key, domain, count)
 			numPodSupportedDomains++
 			if count < min {
 				min = count
