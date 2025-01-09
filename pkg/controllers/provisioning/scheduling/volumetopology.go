@@ -39,23 +39,23 @@ type VolumeTopology struct {
 	kubeClient client.Client
 }
 
-func (v *VolumeTopology) GetVolumeRequirements(ctx context.Context, pod *v1.Pod) (error, []v1.NodeSelectorRequirement) {
+func (v *VolumeTopology) GetVolumeRequirements(ctx context.Context, pod *v1.Pod) ([]v1.NodeSelectorRequirement, error) {
 	var requirements []v1.NodeSelectorRequirement
 	for _, volume := range pod.Spec.Volumes {
 		req, err := v.getRequirements(ctx, pod, volume)
 		if err != nil {
-			return err, nil
+			return nil, err
 		}
 		requirements = append(requirements, req...)
 	}
 	if len(requirements) == 0 {
-		return nil, requirements
+		return requirements, nil
 	}
 
 	log.FromContext(ctx).
 		WithValues("Pod", klog.KRef(pod.Namespace, pod.Name)).
 		V(1).Info(fmt.Sprintf("found requirements from pod volumes, %s", requirements))
-	return nil, requirements
+	return requirements, nil
 }
 
 func (v *VolumeTopology) getRequirements(ctx context.Context, pod *v1.Pod, volume v1.Volume) ([]v1.NodeSelectorRequirement, error) {

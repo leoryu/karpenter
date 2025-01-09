@@ -471,7 +471,7 @@ func validateKarpenterManagedLabelCanExist(p *corev1.Pod) error {
 func (p *Provisioner) convertToPodVolumeRequirements(ctx context.Context, pods []*corev1.Pod) map[*corev1.Pod][]corev1.NodeSelectorRequirement {
 	var schedulablePods = make(map[*corev1.Pod][]corev1.NodeSelectorRequirement)
 	for _, pod := range pods {
-		if err, requirements := p.volumeTopology.GetVolumeRequirements(ctx, pod); err != nil {
+		if requirements, err := p.volumeTopology.GetVolumeRequirements(ctx, pod); err != nil {
 			log.FromContext(ctx).WithValues("Pod", klog.KRef(pod.Namespace, pod.Name)).Error(err, "failed getting volume topology requirements")
 		} else {
 			schedulablePods[pod] = requirements
