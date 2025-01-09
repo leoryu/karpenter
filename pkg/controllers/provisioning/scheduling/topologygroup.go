@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	"sigs.k8s.io/karpenter/pkg/controllers/state"
 	"sigs.k8s.io/karpenter/pkg/scheduling"
 )
 
@@ -60,6 +61,7 @@ type TopologyGroup struct {
 	Type       TopologyType
 	maxSkew    int32
 	minDomains *int32
+	cluster    *state.Cluster
 	namespaces sets.Set[string]
 	selector   *metav1.LabelSelector
 	nodeFilter TopologyNodeFilter
@@ -69,7 +71,7 @@ type TopologyGroup struct {
 	emptyDomains sets.Set[string]       // domains for which we know that no pod exists
 }
 
-func NewTopologyGroup(topologyType TopologyType, topologyKey string, pod *v1.Pod, namespaces sets.Set[string], labelSelector *metav1.LabelSelector, maxSkew int32, minDomains *int32, domains sets.Set[string]) *TopologyGroup {
+func NewTopologyGroup(topologyType TopologyType, topologyKey string, pod *v1.Pod, cluster *state.Cluster, namespaces sets.Set[string], labelSelector *metav1.LabelSelector, maxSkew int32, minDomains *int32, domains sets.Set[string]) *TopologyGroup {
 	domainCounts := map[string]int32{}
 	for domain := range domains {
 		domainCounts[domain] = 0
@@ -82,6 +84,7 @@ func NewTopologyGroup(topologyType TopologyType, topologyKey string, pod *v1.Pod
 	return &TopologyGroup{
 		Type:         topologyType,
 		Key:          topologyKey,
+		cluster:      cluster,
 		namespaces:   namespaces,
 		selector:     labelSelector,
 		nodeFilter:   nodeSelector,
@@ -166,15 +169,39 @@ func (t *TopologyGroup) Hash() uint64 {
 // If there are multiple eligible domains, we return any random domain that satisfies the `maxSkew` configuration.
 // If there are no eligible domains, we return a `DoesNotExist` requirement, implying that we could not satisfy the topologySpread requirement.
 func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDomains *scheduling.Requirement) *scheduling.Requirement {
+
+	var nodes []*v1.Node
+	var blockedDomains = sets.New[string]()
+	if t.cluster != nil {
+		nodes = lo.FilterMap(t.cluster.Nodes(), func(node *state.StateNode, _ int) (*v1.Node, bool) {
+			if node == nil || node.Node == nil {
+				return nil, false
+			}
+			return node.Node, true
+		})
+	}
+	// some empty domains, which all nodes with them don't match the pod, should not be in the calculations.
+	for _, domain := range t.emptyDomains.UnsortedList() {
+		var needBlock = true
+		for _, node := range nodes {
+			if node.GetLabels()[t.Key] == domain && t.nodeFilter.Matches(node) {
+				needBlock = false
+				break
+			}
+		}
+		if needBlock {
+			blockedDomains.Insert(domain)
+		}
+	}
 	// min count is calculated across all domains
-	min := t.domainMinCount(podDomains)
+	min := t.domainMinCount(podDomains, blockedDomains)
 	log.Printf("pod %s min domain, key: %s count:%d", pod.Name, t.Key, min)
 	selfSelecting := t.selects(pod)
 
 	candidateDomains := []string{}
 	for domain := range t.domains {
 		// but we can only choose from the node domains
-		if nodeDomains.Has(domain) {
+		if nodeDomains.Has(domain) && !blockedDomains.Has(domain) {
 			// comment from kube-scheduler regarding the viable choices to schedule to based on skew is:
 			// 'existing matching num' + 'if self-match (1 or 0)' - 'global min matching num' <= 'maxSkew'
 			count := t.domains[domain]
@@ -195,7 +222,7 @@ func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDo
 	return scheduling.NewRequirement(podDomains.Key, v1.NodeSelectorOpIn, candidateDomains...)
 }
 
-func (t *TopologyGroup) domainMinCount(domains *scheduling.Requirement) int32 {
+func (t *TopologyGroup) domainMinCount(domains *scheduling.Requirement, blockedDomains sets.Set[string]) int32 {
 	// hostname based topologies always have a min pod count of zero since we can create one
 	if t.Key == v1.LabelHostname {
 		return 0
@@ -207,7 +234,7 @@ func (t *TopologyGroup) domainMinCount(domains *scheduling.Requirement) int32 {
 	// determine our current min count
 	for domain, count := range t.domains {
 		log.Printf("domain: %s %s : %d", t.Key, domain, count)
-		if domains.Has(domain) {
+		if domains.Has(domain) && !blockedDomains.Has(domain) {
 			log.Printf("has domain: %s %s : %d", t.Key, domain, count)
 			numPodSupportedDomains++
 			if count < min {
