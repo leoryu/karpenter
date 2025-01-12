@@ -261,9 +261,13 @@ func (s *Scheduler) Solve(ctx context.Context, pods []*corev1.Pod) Results {
 }
 
 func (s *Scheduler) add(ctx context.Context, pod *corev1.Pod) error {
+	var volumeRequirements []corev1.NodeSelectorRequirement
+	if _, ok := s.topology.podVolumeRequirements[pod]; ok {
+		volumeRequirements = s.topology.podVolumeRequirements[pod]
+	}
 	// first try to schedule against an in-flight real node
 	for _, node := range s.existingNodes {
-		if err := node.Add(ctx, s.kubeClient, pod); err == nil {
+		if err := node.Add(ctx, s.kubeClient, pod, volumeRequirements); err == nil {
 			return nil
 		}
 	}
@@ -273,7 +277,7 @@ func (s *Scheduler) add(ctx context.Context, pod *corev1.Pod) error {
 
 	// Pick existing node that we are about to create
 	for _, nodeClaim := range s.newNodeClaims {
-		if err := nodeClaim.Add(pod); err == nil {
+		if err := nodeClaim.Add(pod, volumeRequirements); err == nil {
 			return nil
 		}
 	}
@@ -295,7 +299,7 @@ func (s *Scheduler) add(ctx context.Context, pod *corev1.Pod) error {
 			}
 		}
 		nodeClaim := NewNodeClaim(nodeClaimTemplate, s.topology, s.daemonOverhead[nodeClaimTemplate], instanceTypes)
-		if err := nodeClaim.Add(pod); err != nil {
+		if err := nodeClaim.Add(pod, volumeRequirements); err != nil {
 			errs = multierr.Append(errs, fmt.Errorf("incompatible with nodepool %q, daemonset overhead=%s, %w",
 				nodeClaimTemplate.NodePoolName,
 				resources.String(s.daemonOverhead[nodeClaimTemplate]),
