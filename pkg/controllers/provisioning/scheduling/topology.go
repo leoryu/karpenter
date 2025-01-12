@@ -180,7 +180,7 @@ func (t *Topology) AddRequirements(podRequirements, nodeRequirements scheduling.
 		if nodeRequirements.Has(topology.Key) {
 			nodeDomains = nodeRequirements.Get(topology.Key)
 		}
-		domains := topology.Get(p, podDomains, nodeDomains, t.podVolumeRequirements[p])
+		domains := topology.Get(p, podDomains, nodeDomains, len(t.podVolumeRequirements[p]) != 0)
 		if domains.Len() == 0 {
 			return nil, topologyError{
 				topology:    topology,

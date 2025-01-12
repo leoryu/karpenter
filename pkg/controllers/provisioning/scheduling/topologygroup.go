@@ -95,10 +95,10 @@ func NewTopologyGroup(topologyType TopologyType, topologyKey string, pod *v1.Pod
 	}
 }
 
-func (t *TopologyGroup) Get(pod *v1.Pod, podDomains, nodeDomains *scheduling.Requirement, volumeRequirements []v1.NodeSelectorRequirement) *scheduling.Requirement {
+func (t *TopologyGroup) Get(pod *v1.Pod, podDomains, nodeDomains *scheduling.Requirement, hasVolumeRequirement bool) *scheduling.Requirement {
 	switch t.Type {
 	case TopologyTypeSpread:
-		return t.nextDomainTopologySpread(pod, podDomains, nodeDomains, volumeRequirements)
+		return t.nextDomainTopologySpread(pod, podDomains, nodeDomains, hasVolumeRequirement)
 	case TopologyTypePodAffinity:
 		return t.nextDomainAffinity(pod, podDomains, nodeDomains)
 	case TopologyTypePodAntiAffinity:
@@ -167,9 +167,12 @@ func (t *TopologyGroup) Hash() uint64 {
 // nextDomainTopologySpread returns a scheduling.Requirement that includes a node domain that a pod should be scheduled to.
 // If there are multiple eligible domains, we return any random domain that satisfies the `maxSkew` configuration.
 // If there are no eligible domains, we return a `DoesNotExist` requirement, implying that we could not satisfy the topologySpread requirement.
-func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDomains *scheduling.Requirement, volumeRequirements []v1.NodeSelectorRequirement) *scheduling.Requirement {
+func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDomains *scheduling.Requirement, hasVolumeRequirement bool) *scheduling.Requirement {
 	var nodes = make(map[string][]*v1.Node)
 	var blockedDomains = sets.New[string]()
+	var candidateDomains = []string{}
+	var firstDomains = []string{}
+
 	if t.cluster != nil {
 		for _, node := range t.cluster.Nodes() {
 			if node == nil || node.Node == nil {
@@ -183,12 +186,14 @@ func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDo
 	}
 	// some empty domains, which all existing nodes with them don't match the pod, should not be in the calculations.
 	for _, domain := range t.emptyDomains.UnsortedList() {
-		// no existing node has this domain and this domain is compatible with pod volume
-		podVolumeRequirements := scheduling.NewNodeSelectorRequirements(volumeRequirements...)
-		if err := scheduling.NewLabelRequirements(map[string]string{t.Key: domain}).
-			Compatible(podVolumeRequirements, scheduling.AllowUndefinedWellKnownLabels); err == nil &&
-			len(nodes[domain]) == 0 {
-			continue
+		// no existing node has this domain, so this domain is in nodeclaim and may will be created first time.
+		if len(nodes[domain]) == 0 {
+			// if we have volume requirement, we should block the first time domain, since it's skew is always 0 which may break the skew caculations.
+			if hasVolumeRequirement {
+				firstDomains = append(firstDomains, domain)
+			} else {
+				continue
+			}
 		}
 		var needBlock = true
 		for _, node := range nodes[domain] {
@@ -216,15 +221,22 @@ func (t *TopologyGroup) nextDomainTopologySpread(pod *v1.Pod, podDomains, nodeDo
 			if selfSelecting {
 				count++
 			}
-			if count-min <= t.maxSkew && count < minCount {
-				minDomain = domain
-				minCount = count
+			if count-min <= t.maxSkew {
+				candidateDomains = append(candidateDomains, domain)
+				if count < minCount {
+					minDomain = domain
+					minCount = count
+				}
 			}
 		}
 	}
-	if minDomain == "" {
+	if minDomain == "" && len(firstDomains) == 0 {
 		// avoids an error message about 'zone in [""]', preferring 'zone in []'
 		return scheduling.NewRequirement(podDomains.Key, v1.NodeSelectorOpDoesNotExist)
+	}
+	// we should pop all candidate domains for volume requirments
+	if hasVolumeRequirement {
+		return scheduling.NewRequirement(podDomains.Key, v1.NodeSelectorOpIn, append(firstDomains, candidateDomains...)...)
 	}
 	return scheduling.NewRequirement(podDomains.Key, v1.NodeSelectorOpIn, minDomain)
 }
