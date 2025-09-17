@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/karpenter/pkg/events"
 	"sigs.k8s.io/karpenter/pkg/metrics"
 	"sigs.k8s.io/karpenter/pkg/operator/injection"
+	koptions "sigs.k8s.io/karpenter/pkg/operator/options"
 	"sigs.k8s.io/karpenter/pkg/scheduling"
 	"sigs.k8s.io/karpenter/pkg/utils/pod"
 	"sigs.k8s.io/karpenter/pkg/utils/resources"
@@ -285,6 +286,10 @@ func (s *Scheduler) Solve(ctx context.Context, pods []*corev1.Pod) Results {
 	startTime := s.clock.Now()
 	lastLogTime := s.clock.Now()
 	batchSize := len(q.pods)
+	newNodeClaimBatchSize := koptions.FromContext(ctx).MaxNewNodeClaimBatchSize
+
+	log.FromContext(ctx).WithValues("nodeclaim batch", newNodeClaimBatchSize).Info("new nodeclaim batch size")
+
 	for {
 		UnfinishedWorkSeconds.Set(s.clock.Since(startTime).Seconds(), map[string]string{ControllerLabel: injection.GetControllerName(ctx), schedulingIDLabel: string(s.uuid)})
 		QueueDepth.Set(float64(len(q.pods)), map[string]string{ControllerLabel: injection.GetControllerName(ctx), schedulingIDLabel: string(s.uuid)})
@@ -292,6 +297,10 @@ func (s *Scheduler) Solve(ctx context.Context, pods []*corev1.Pod) Results {
 		if s.clock.Since(lastLogTime) > time.Minute {
 			log.FromContext(ctx).WithValues("pods-scheduled", batchSize-len(q.pods), "pods-remaining", len(q.pods), "existing-nodes", len(s.existingNodes), "simulated-nodes", len(s.newNodeClaims), "duration", s.clock.Since(startTime).Truncate(time.Second), "scheduling-id", string(s.uuid)).Info("computing pod scheduling...")
 			lastLogTime = s.clock.Now()
+		}
+		if len(s.newNodeClaims) > newNodeClaimBatchSize {
+			log.FromContext(ctx).WithValues("max-new-nodeclaim-batch-size", newNodeClaimBatchSize, "current-new-nodeclaims", len(s.newNodeClaims)).Info("new nodeclaim batch size reached, stop scheduling")
+			break
 		}
 		// Try the next pod
 		pod, ok := q.Pop()
