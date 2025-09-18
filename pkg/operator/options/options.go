@@ -48,22 +48,23 @@ type FeatureGates struct {
 
 // Options contains all CLI flags / env vars for karpenter-core. It adheres to the options.Injectable interface.
 type Options struct {
-	ServiceName             string
-	MetricsPort             int
-	HealthProbePort         int
-	KubeClientQPS           int
-	KubeClientBurst         int
-	EnableProfiling         bool
-	DisableLeaderElection   bool
-	LeaderElectionName      string
-	LeaderElectionNamespace string
-	MemoryLimit             int64
-	LogLevel                string
-	LogOutputPaths          string
-	LogErrorOutputPaths     string
-	BatchMaxDuration        time.Duration
-	BatchIdleDuration       time.Duration
-	FeatureGates            FeatureGates
+	ServiceName              string
+	MetricsPort              int
+	HealthProbePort          int
+	KubeClientQPS            int
+	KubeClientBurst          int
+	EnableProfiling          bool
+	DisableLeaderElection    bool
+	LeaderElectionName       string
+	LeaderElectionNamespace  string
+	MemoryLimit              int64
+	LogLevel                 string
+	LogOutputPaths           string
+	LogErrorOutputPaths      string
+	BatchMaxDuration         time.Duration
+	BatchIdleDuration        time.Duration
+	MaxNewNodeClaimBatchSize int
+	FeatureGates             FeatureGates
 }
 
 type FlagSet struct {
@@ -99,6 +100,7 @@ func (o *Options) AddFlags(fs *FlagSet) {
 	fs.StringVar(&o.LogErrorOutputPaths, "log-error-output-paths", env.WithDefaultString("LOG_ERROR_OUTPUT_PATHS", "stderr"), "Optional comma separated paths for logging error output")
 	fs.DurationVar(&o.BatchMaxDuration, "batch-max-duration", env.WithDefaultDuration("BATCH_MAX_DURATION", 10*time.Second), "The maximum length of a batch window. The longer this is, the more pods we can consider for provisioning at one time which usually results in fewer but larger nodes.")
 	fs.DurationVar(&o.BatchIdleDuration, "batch-idle-duration", env.WithDefaultDuration("BATCH_IDLE_DURATION", time.Second), "The maximum amount of time with no new pending pods that if exceeded ends the current batching window. If pods arrive faster than this time, the batching window will be extended up to the maxDuration. If they arrive slower, the pods will be batched separately.")
+	fs.IntVar(&o.MaxNewNodeClaimBatchSize, "max-new-nodeclaim-batch-size", env.WithDefaultInt("MAX_NEW_NODECLAIM_BATCH_SIZE", 0), "Maximum number of new nodeclaim to schedule in a single batch. If not set or zero, defaults to unlimited.")
 	fs.StringVar(&o.FeatureGates.inputStr, "feature-gates", env.WithDefaultString("FEATURE_GATES", "NodeRepair=false,ReservedCapacity=false,SpotToSpotConsolidation=false"), "Optional features can be enabled / disabled using feature gates. Current options are: NodeRepair, ReservedCapacity, and SpotToSpotConsolidation")
 }
 
